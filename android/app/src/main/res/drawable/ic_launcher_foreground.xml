@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <!-- Yellow paw print centred in the 108dp safe zone -->
+  <!-- 4 toe beans -->
+  <path
+      android:fillColor="#FBBF24"
+      android:pathData="M38,30 a6,7 0 1,0 0.001,0 Z" />
+  <path
+      android:fillColor="#FBBF24"
+      android:pathData="M54,24 a6,7 0 1,0 0.001,0 Z" />
+  <path
+      android:fillColor="#FBBF24"
+      android:pathData="M70,30 a6,7 0 1,0 0.001,0 Z" />
+  <path
+      android:fillColor="#FBBF24"
+      android:pathData="M80,44 a5,7 0 1,0 0.001,0 Z" />
+  <!-- Main pad -->
+  <path
+      android:fillColor="#FBBF24"
+      android:pathData="M54,48 C38,48 28,56 28,66 L28,80 L80,80 L80,66 C80,56 70,48 54,48 Z" />
+</vector>
