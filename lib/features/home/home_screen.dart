@@ -21,15 +21,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _searchController = TextEditingController();
 
   final _services = const [
-    _ServiceItem(Icons.emergency_rounded, 'Emergency\nClinic', true, 'emergency'),
+    _ServiceItem(Icons.emergency_rounded, 'Emergency\nClinics & Vets', true, 'emergency'),
     _ServiceItem(Icons.content_cut_rounded, 'Groomers', false, 'groomers'),
     _ServiceItem(Icons.night_shelter_rounded, 'Pet Sitter', false, 'sitters'),
     _ServiceItem(Icons.directions_run_rounded, 'Pet Walker', false, 'walkers'),
     _ServiceItem(Icons.festival_rounded, 'Daycare', false, 'daycare'),
     _ServiceItem(Icons.sports_score_rounded, 'Trainers', false, 'trainers'),
-    _ServiceItem(Icons.shopping_bag_rounded, 'Pet Store', false, 'store'),
+    _ServiceItem(Icons.shopping_bag_rounded, 'Pet Store & Adoption', false, 'store'),
     _ServiceItem(Icons.local_shipping_rounded, 'Pet Transpo', false, 'transport'),
     _ServiceItem(Icons.psychology_rounded, 'Behaviorist', false, 'behaviorist'),
+    _ServiceItem(Icons.pool_rounded, 'Hydrotherapy', false, 'hydrotherapy'),
+    _ServiceItem(Icons.shield_outlined, 'Pet Insurance', false, 'insurance'),
+    _ServiceItem(Icons.night_shelter_rounded, 'Pet Boarding', false, 'boarding'),
   ];
 
   @override
@@ -57,6 +60,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context.go(AppRoutes.transportList);
     } else if (item.route == 'behaviorist') {
       context.go(AppRoutes.behavioristList);
+    } else if (item.route == 'hydrotherapy') {
+      context.go(AppRoutes.hydrotherapyList);
+    } else if (item.route == 'insurance') {
+      context.go(AppRoutes.petInsurance);
+    } else if (item.route == 'boarding') {
+      context.go(AppRoutes.boardingList);
     }
   }
 

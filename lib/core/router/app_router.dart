@@ -4,13 +4,8 @@ import 'package:pet_app/features/onboarding/onboarding_screen.dart';
 import 'package:pet_app/features/auth/login_screen.dart';
 import 'package:pet_app/features/home/home_screen.dart';
 import 'package:pet_app/features/emergency/clinic_detail_screen.dart';
-import 'package:pet_app/features/groomers/groomers_list_screen.dart';
-import 'package:pet_app/features/sitters/sitters_list_screen.dart';
-import 'package:pet_app/features/walkers/walkers_list_screen.dart';
-import 'package:pet_app/features/daycare/daycare_list_screen.dart';
-import 'package:pet_app/features/trainers/trainers_list_screen.dart';
-import 'package:pet_app/features/behaviorist/behaviorist_list_screen.dart';
-import 'package:pet_app/features/transport/transport_list_screen.dart';
+import 'package:pet_app/shared/screens/provider_list_screen.dart';
+import 'package:pet_app/features/insurance/pet_insurance_screen.dart';
 import 'package:pet_app/features/store/store_list_screen.dart';
 import 'package:pet_app/features/store/store_detail_screen.dart';
 import 'package:pet_app/features/store/cart_screen.dart';
@@ -35,6 +30,9 @@ class AppRoutes {
   static const trainersList = '/trainers';
   static const behavioristList = '/behaviorists';
   static const transportList = '/transport';
+  static const hydrotherapyList = '/hydrotherapy';
+  static const boardingList = '/boarding';
+  static const petInsurance = '/pet-insurance';
   static const storeList = '/store-list';
   static const storeDetail = '/store/:storeId';
   static const cart = '/cart';
@@ -85,31 +83,43 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.groomersList,
-      builder: (context, state) => const GroomersListScreen(),
+      builder: (context, state) => const ProviderListScreen.grooming(),
     ),
     GoRoute(
       path: AppRoutes.sittersList,
-      builder: (context, state) => const SittersListScreen(),
+      builder: (context, state) => const ProviderListScreen.sitting(),
     ),
     GoRoute(
       path: AppRoutes.walkersList,
-      builder: (context, state) => const WalkersListScreen(),
+      builder: (context, state) => const ProviderListScreen.walking(),
     ),
     GoRoute(
       path: AppRoutes.daycareList,
-      builder: (context, state) => const DaycareListScreen(),
+      builder: (context, state) => const ProviderListScreen.daycare(),
     ),
     GoRoute(
       path: AppRoutes.trainersList,
-      builder: (context, state) => const TrainersListScreen(),
+      builder: (context, state) => const ProviderListScreen.training(),
     ),
     GoRoute(
       path: AppRoutes.behavioristList,
-      builder: (context, state) => const BehavioristListScreen(),
+      builder: (context, state) => const ProviderListScreen.behaviorist(),
     ),
     GoRoute(
       path: AppRoutes.transportList,
-      builder: (context, state) => const TransportListScreen(),
+      builder: (context, state) => const ProviderListScreen.transport(),
+    ),
+    GoRoute(
+      path: AppRoutes.hydrotherapyList,
+      builder: (context, state) => const ProviderListScreen.hydrotherapy(),
+    ),
+    GoRoute(
+      path: AppRoutes.boardingList,
+      builder: (context, state) => const ProviderListScreen.boarding(),
+    ),
+    GoRoute(
+      path: AppRoutes.petInsurance,
+      builder: (context, state) => const PetInsuranceScreen(),
     ),
     GoRoute(
       path: AppRoutes.storeList,

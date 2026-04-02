@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:pet_app/core/theme/app_colors.dart';
 import 'package:pet_app/core/utils/responsive.dart';
 import 'package:pet_app/core/providers/auth_provider.dart';
 
@@ -17,7 +16,6 @@ class SplashScreen extends ConsumerStatefulWidget {
 class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-  late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
   ProviderSubscription<AsyncValue<User?>>? _authSub;
@@ -28,13 +26,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
-    );
-
-    _scaleAnim = Tween<double>(begin: 0.6, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _ctrl,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
-      ),
     );
 
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -88,138 +79,26 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundDark,
+      backgroundColor: const Color(0xFF181d33),
       body: ResponsiveContainer(
         child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0f0f1a), Color(0xFF1a1a2e), Color(0xFF16213e)],
+          color: const Color(0xFF181d33),
+          child: Center(
+            child: FadeTransition(
+              opacity: _fadeAnim,
+              child: SlideTransition(
+                position: _slideAnim,
+                child: Text(
+                  'Pet App',
+                  style: GoogleFonts.inter(
+                    fontSize: 42,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
             ),
-          ),
-          child: Stack(
-            children: [
-              // Background glow blobs
-              Positioned(
-                top: -80,
-                right: -80,
-                child: Container(
-                  width: 300,
-                  height: 300,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.primary.withValues(alpha: 0.06),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: -60,
-                left: -60,
-                child: Container(
-                  width: 250,
-                  height: 250,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.06),
-                  ),
-                ),
-              ),
-
-              // Center content
-              Center(
-                child: FadeTransition(
-                  opacity: _fadeAnim,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Logo
-                      ScaleTransition(
-                        scale: _scaleAnim,
-                        child: Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.5),
-                                blurRadius: 40,
-                                spreadRadius: 8,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.pets_rounded,
-                            color: Color(0xFF0F172A),
-                            size: 52,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-
-                      // App name
-                      SlideTransition(
-                        position: _slideAnim,
-                        child: Column(
-                          children: [
-                            Text(
-                              'Pet App',
-                              style: GoogleFonts.inter(
-                                fontSize: 38,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Your pet deserves the best',
-                              style: GoogleFonts.inter(
-                                fontSize: 15,
-                                color: Colors.white.withValues(alpha: 0.5),
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Bottom loading indicator
-              Positioned(
-                bottom: 60,
-                left: 0,
-                right: 0,
-                child: FadeTransition(
-                  opacity: _fadeAnim,
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.primary.withValues(alpha: 0.6),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Loading...',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.3),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),

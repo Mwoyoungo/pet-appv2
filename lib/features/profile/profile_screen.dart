@@ -1564,7 +1564,7 @@ class _ProviderSheetState extends ConsumerState<_ProviderSheet> {
 
   static const _allServices = [
     'Grooming', 'Walking', 'Daycare', 'Training', 'Sitting',
-    'Behaviorist', 'Transport',
+    'Behaviorist', 'Transport', 'Hydrotherapy', 'Boarding',
   ];
 
   @override
