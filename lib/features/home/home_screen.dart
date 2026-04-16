@@ -43,29 +43,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _onServiceTap(_ServiceItem item) {
     if (item.route == 'emergency') {
-      context.go('/clinic/1');
+      context.push('/clinic/1');
     } else if (item.route == 'groomers') {
-      context.go(AppRoutes.groomersList);
+      context.push(AppRoutes.groomersList);
     } else if (item.route == 'sitters') {
-      context.go(AppRoutes.sittersList);
+      context.push(AppRoutes.sittersList);
     } else if (item.route == 'walkers') {
-      context.go(AppRoutes.walkersList);
+      context.push(AppRoutes.walkersList);
     } else if (item.route == 'daycare') {
-      context.go(AppRoutes.daycareList);
+      context.push(AppRoutes.daycareList);
     } else if (item.route == 'trainers') {
-      context.go(AppRoutes.trainersList);
+      context.push(AppRoutes.trainersList);
     } else if (item.route == 'store') {
-      context.go(AppRoutes.storeList);
+      context.push(AppRoutes.storeList);
     } else if (item.route == 'transport') {
-      context.go(AppRoutes.transportList);
+      context.push(AppRoutes.transportList);
     } else if (item.route == 'behaviorist') {
-      context.go(AppRoutes.behavioristList);
+      context.push(AppRoutes.behavioristList);
     } else if (item.route == 'hydrotherapy') {
-      context.go(AppRoutes.hydrotherapyList);
+      context.push(AppRoutes.hydrotherapyList);
     } else if (item.route == 'insurance') {
-      context.go(AppRoutes.petInsurance);
+      context.push(AppRoutes.petInsurance);
     } else if (item.route == 'boarding') {
-      context.go(AppRoutes.boardingList);
+      context.push(AppRoutes.boardingList);
     }
   }
 
@@ -327,8 +327,8 @@ class _PetProfileCard extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(17),
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=200',
+                  child: Image.asset(
+                    'assets/banner.jpeg',
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
                       color: AppColors.primary.withValues(alpha: 0.2),

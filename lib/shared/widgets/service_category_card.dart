@@ -31,7 +31,7 @@ class ServiceCategoryCard extends StatelessWidget {
             AspectRatio(
               aspectRatio: 1,
               child: Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: highlighted
                       ? AppColors.primary
@@ -58,8 +58,8 @@ class ServiceCategoryCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 32,
+                      height: 32,
                       decoration: BoxDecoration(
                         color: highlighted
                             ? Colors.white.withValues(alpha: 0.2)
@@ -69,22 +69,26 @@ class ServiceCategoryCard extends StatelessWidget {
                       child: Icon(
                         icon,
                         color: highlighted ? Colors.white : AppColors.primary,
-                        size: 24,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: highlighted
-                            ? Colors.white
-                            : (isDark
-                                  ? AppColors.textPrimaryDark
-                                  : AppColors.textPrimaryLight),
-                        height: 1.3,
+                    const SizedBox(height: 6),
+                    Flexible(
+                      child: Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: highlighted
+                              ? Colors.white
+                              : (isDark
+                                    ? AppColors.textPrimaryDark
+                                    : AppColors.textPrimaryLight),
+                          height: 1.3,
+                        ),
                       ),
                     ),
                   ],

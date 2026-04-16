@@ -50,3 +50,5 @@ app.*.map.json
 
 # Keep web build for Vercel deployment
 !/build/web
+build/
+banner.jpeg

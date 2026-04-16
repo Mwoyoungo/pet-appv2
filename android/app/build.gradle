@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace 'com.example.my_app'
+    namespace 'com.example.pet_app'
     compileSdkVersion flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.example.my_app'
+        applicationId 'com.example.pet_app'
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutter.versionCode
