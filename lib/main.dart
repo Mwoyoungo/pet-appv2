@@ -32,7 +32,9 @@ Future<void> _setupLocalNotifications() async {
 
 @pragma('vm:entry-point')
 Future<void> _onBackgroundMessage(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  }
   await _setupLocalNotifications();
 
   await _localNotifications
@@ -82,7 +84,9 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  }
 
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);

@@ -7,6 +7,14 @@ class ClinicDetailScreen extends StatelessWidget {
   const ClinicDetailScreen({super.key, required this.clinicId});
   final String clinicId;
 
+  void _showFullScreenImage(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenImageViewer(imageUrl: imageUrl),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -63,18 +71,23 @@ class ClinicDetailScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(28),
                       child: Stack(
                         children: [
-                          Image.network(
-                            'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800',
-                            height: 220,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                              height: 220,
-                              color: AppColors.surfaceDark,
-                              child: const Icon(
-                                Icons.local_hospital,
-                                size: 64,
-                                color: AppColors.primary,
+                          GestureDetector(
+                            onTap: () => _showFullScreenImage(
+                              context,
+                              'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800',
+                            ),
+                            child: Image.network(
+                              'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800',
+                              width: double.infinity,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 220,
+                                color: AppColors.surfaceDark,
+                                child: const Icon(
+                                  Icons.local_hospital,
+                                  size: 64,
+                                  color: AppColors.primary,
+                                ),
                               ),
                             ),
                           ),
@@ -92,7 +105,9 @@ class ClinicDetailScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(50),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primary.withValues(alpha: 0.4),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     blurRadius: 12,
                                   ),
                                 ],
@@ -181,7 +196,9 @@ class ClinicDetailScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.35),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.35,
+                                  ),
                                   blurRadius: 16,
                                   offset: const Offset(0, 6),
                                 ),
@@ -288,7 +305,9 @@ class ClinicDetailScreen extends StatelessWidget {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.success.withValues(alpha: 0.12),
+                                  color: AppColors.success.withValues(
+                                    alpha: 0.12,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -379,7 +398,9 @@ class ClinicDetailScreen extends StatelessWidget {
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppColors.primary.withValues(alpha: 0.4),
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.4,
+                                      ),
                                       blurRadius: 16,
                                     ),
                                   ],
@@ -428,6 +449,44 @@ class ClinicDetailScreen extends StatelessWidget {
   }
 }
 
+// ── Full Screen Image Viewer ────────────────────────────────────────────────
+
+class FullScreenImageViewer extends StatelessWidget {
+  const FullScreenImageViewer({super.key, required this.imageUrl});
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Icon(Icons.error, color: Colors.white, size: 64),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 40,
+            right: 16,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close, color: Colors.white, size: 28),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Sub-widgets ──────────────────────────────────────────────────────────────
 
 class _NavBtn extends StatelessWidget {
@@ -451,7 +510,10 @@ class _NavBtn extends StatelessWidget {
             color: isDark ? AppColors.borderDark : AppColors.borderLight,
           ),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 8,
+            ),
           ],
         ),
         child: Icon(icon, size: 18, color: color),

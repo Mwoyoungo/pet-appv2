@@ -24,27 +24,70 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
   @override
   AsyncValue<User?> build() {
     final user = FirebaseAuth.instance.currentUser;
+    // If user is logged in, connect to Stream before returning ready state
     if (user != null) {
-      _connectStreamUser(user);
+      // Start connection and update state when done
+      _initWithStreamConnection(user);
+      return const AsyncValue.loading();
     }
     return AsyncValue.data(user);
   }
 
-  Future<void> _connectStreamUser(User firebaseUser) async {
-    if (_streamConnected) return;
+  Future<void> _initWithStreamConnection(User firebaseUser) async {
+    debugPrint(
+      'AuthNotifier: Starting Stream connection for ${firebaseUser.uid}',
+    );
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('getStreamToken');
+      await _connectStreamUser(firebaseUser);
+      debugPrint('AuthNotifier: Stream connection successful');
+      // Only set state to data after Stream is connected
+      state = AsyncValue.data(firebaseUser);
+    } catch (e) {
+      debugPrint('AuthNotifier: Stream connection FAILED: $e');
+      // Even if Stream fails, allow user into app (they can retry in chat)
+      state = AsyncValue.data(firebaseUser);
+    }
+  }
+
+  Future<void> _connectStreamUser(User firebaseUser) async {
+    debugPrint('_connectStreamUser: Starting for ${firebaseUser.uid}');
+
+    if (_streamConnected) {
+      // Check if already connected with same user
+      final currentStreamUser = streamClient.state.currentUser;
+      if (currentStreamUser?.id == firebaseUser.uid) {
+        debugPrint(
+          '_connectStreamUser: Already connected for user: ${firebaseUser.uid}',
+        );
+        return;
+      }
+      // Different user or stale connection - disconnect first
+      debugPrint('_connectStreamUser: Disconnecting stale connection');
+      await _disconnectStreamUser(firebaseUser.uid);
+    }
+
+    try {
+      debugPrint(
+        '_connectStreamUser: Calling getStreamToken Cloud Function...',
+      );
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'getStreamToken',
+      );
       final result = await callable.call();
       final token = result.data['token'] as String;
+      debugPrint('_connectStreamUser: Got token, connecting to Stream...');
 
       await streamClient.connectUser(
         stream.User(
           id: firebaseUser.uid,
-          extraData: {'name': firebaseUser.displayName ?? firebaseUser.email ?? 'User'},
+          extraData: {
+            'name': firebaseUser.displayName ?? firebaseUser.email ?? 'User',
+          },
         ),
         token,
       );
       _streamConnected = true;
+      debugPrint('_connectStreamUser: SUCCESS - Connected to Stream');
 
       // Save FCM token for push notifications (mobile only)
       if (!kIsWeb) {
@@ -57,7 +100,9 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
         });
       }
     } catch (e) {
-      debugPrint('Stream connect error: $e');
+      debugPrint('_connectStreamUser: FAILED with error: $e');
+      _streamConnected = false;
+      rethrow;
     }
   }
 
@@ -94,9 +139,8 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
       final db = FirebaseFirestore.instance;
       final doc = await db.collection('users').doc(user.uid).get();
       if (!doc.exists) {
-        final displayName = user.displayName ??
-            user.email?.split('@').first ??
-            'User';
+        final displayName =
+            user.displayName ?? user.email?.split('@').first ?? 'User';
         await db.collection('users').doc(user.uid).set({
           'displayName': displayName,
           'email': user.email ?? '',
@@ -117,11 +161,11 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
         email: email,
         password: password,
       );
-      state = AsyncValue.data(cred.user);
       if (cred.user != null) {
         await _ensureFirestoreDoc(cred.user!);
         await _connectStreamUser(cred.user!);
       }
+      state = AsyncValue.data(cred.user);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
       rethrow;
@@ -135,11 +179,11 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
         email: email,
         password: password,
       );
-      state = AsyncValue.data(cred.user);
       if (cred.user != null) {
         await _ensureFirestoreDoc(cred.user!);
         await _connectStreamUser(cred.user!);
       }
+      state = AsyncValue.data(cred.user);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
       rethrow;

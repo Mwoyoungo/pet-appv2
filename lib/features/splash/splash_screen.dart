@@ -45,26 +45,39 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     _ctrl.forward();
 
-    // Navigate after animation — but wait for auth stream to emit first.
-    // Firebase Auth persists sessions; authStateChanges() fires quickly from
-    // local cache, but may not have emitted by the time the animation ends on
-    // slow devices. Reading currentUserProvider while still loading returns
-    // null, causing a false "logged-out" state.
+    // Navigate after animation — but wait for auth provider (Firebase + Stream)
+    // to fully connect before navigating to home screen.
     Future.delayed(const Duration(milliseconds: 2400), () {
       if (!mounted) return;
-      final authAsync = ref.read(authStateProvider);
+
+      // Check authProvider which includes Firebase + Stream connection
+      final authAsync = ref.read(authProvider);
+
       if (authAsync.hasValue) {
-        // Auth already resolved — navigate immediately.
+        // Auth (including Stream) already resolved — navigate immediately.
+        debugPrint('Splash: Auth ready, user=${authAsync.value?.uid}');
         widget.onComplete(isFirstTime: authAsync.value == null);
-      } else {
-        // Auth stream still loading — wait for the first emitted value.
-        _authSub = ref.listenManual(authStateProvider, (_, next) {
+      } else if (authAsync.isLoading) {
+        // Auth still loading (connecting to Stream) — wait for completion.
+        debugPrint('Splash: Auth loading, waiting...');
+        _authSub = ref.listenManual(authProvider, (_, next) {
           if (next.hasValue && mounted) {
+            debugPrint('Splash: Auth now ready, navigating...');
             _authSub?.close();
             _authSub = null;
             widget.onComplete(isFirstTime: next.value == null);
+          } else if (next.hasError && mounted) {
+            debugPrint('Splash: Auth error, navigating anyway...');
+            _authSub?.close();
+            _authSub = null;
+            // Even with error, let user in (chat can retry)
+            widget.onComplete(isFirstTime: next.value == null);
           }
         });
+      } else {
+        // Auth error or no user
+        debugPrint('Splash: Auth error or no user');
+        widget.onComplete(isFirstTime: true);
       }
     });
   }

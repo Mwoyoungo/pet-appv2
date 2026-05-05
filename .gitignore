@@ -50,3 +50,16 @@ app.*.map.json
 build/*
 !build/web
 banner.jpeg
+
+# Sensitive / secret files
+api key.md
+"api key.md"
+*.md.secret
+
+# Firebase config (contain API keys — add to repo only via CI secrets)
+google-services.json
+GoogleService-Info.plist
+
+# Screenshots / personal media
+Screenshot*.png
+Screenshot*.jpg
