@@ -3,14 +3,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geocoding/geocoding.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:go_router/go_router.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:pet_app/core/services/maps_web_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pet_app/core/theme/app_colors.dart';
 import 'package:pet_app/core/providers/theme_provider.dart';
 import 'package:pet_app/core/providers/user_profile_provider.dart';
 import 'package:pet_app/core/utils/responsive.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pet_app/core/router/app_router.dart';
 import 'package:pet_app/shared/widgets/bottom_nav_bar.dart';
 import 'package:pet_app/shared/widgets/service_category_card.dart';
@@ -108,59 +112,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           );
 
-      // Try to get placemark with better error handling
-      List<Placemark> placemarks = [];
-      try {
-        placemarks = await placemarkFromCoordinates(
-          pos.latitude,
-          pos.longitude,
-        ).timeout(const Duration(seconds: 10));
-      } catch (e) {
-        debugPrint('[Home] Geocoding failed: $e');
+      // Get accurate address - use web geocoding on web, native geocoding on mobile
+      String city = 'Unknown';
+      String fullAddress = '';
+
+      if (kIsWeb) {
+        // Web: Use Google Maps JS Geocoder (more accurate, no CORS)
+        try {
+          final result = await MapsWebService.reverseGeocode(
+            LatLng(pos.latitude, pos.longitude),
+          );
+          if (result != null) {
+            city = result['city'] ?? 'Unknown';
+            fullAddress = result['fullAddress'] ?? result['address'] ?? '';
+            debugPrint('[Home] Web geocoding: $city - $fullAddress');
+          }
+        } catch (e) {
+          debugPrint('[Home] Web geocoding failed: $e');
+        }
+      } else {
+        // Native: Use geocoding package
+        try {
+          final placemarks = await placemarkFromCoordinates(
+            pos.latitude,
+            pos.longitude,
+          ).timeout(const Duration(seconds: 10));
+
+          if (placemarks.isNotEmpty) {
+            final p = placemarks.first;
+            city = p.locality?.isNotEmpty == true
+                ? p.locality!
+                : (p.subLocality?.isNotEmpty == true
+                      ? p.subLocality!
+                      : (p.subAdministrativeArea?.isNotEmpty == true
+                            ? p.subAdministrativeArea!
+                            : 'Unknown'));
+
+            fullAddress = [
+              p.street?.isNotEmpty == true ? p.street : null,
+              p.subLocality?.isNotEmpty == true && p.subLocality != city
+                  ? p.subLocality
+                  : null,
+              p.locality?.isNotEmpty == true && p.locality != city
+                  ? p.locality
+                  : null,
+              p.administrativeArea?.isNotEmpty == true
+                  ? p.administrativeArea
+                  : null,
+              p.country?.isNotEmpty == true ? p.country : null,
+            ].where((s) => s != null && s.isNotEmpty).join(', ');
+          }
+        } catch (e) {
+          debugPrint('[Home] Native geocoding failed: $e');
+        }
       }
 
       if (!mounted) return;
 
-      if (placemarks.isNotEmpty) {
-        final p = placemarks.first;
-        // Better city selection priority: locality > subLocality > subAdministrativeArea
-        final city = p.locality?.isNotEmpty == true
-            ? p.locality!
-            : (p.subLocality?.isNotEmpty == true
-                  ? p.subLocality!
-                  : (p.subAdministrativeArea?.isNotEmpty == true
-                        ? p.subAdministrativeArea!
-                        : 'Unknown'));
-
-        // Build full address with better formatting
-        final parts = [
-          p.street?.isNotEmpty == true ? p.street : null,
-          p.subLocality?.isNotEmpty == true && p.subLocality != city
-              ? p.subLocality
-              : null,
-          p.locality?.isNotEmpty == true && p.locality != city
-              ? p.locality
-              : null,
-          p.administrativeArea?.isNotEmpty == true
-              ? p.administrativeArea
-              : null,
-          p.country?.isNotEmpty == true ? p.country : null,
-        ].where((s) => s != null && s.isNotEmpty).join(', ');
-
-        setState(() {
-          _currentCity = city;
-          _fullAddress = parts.isNotEmpty ? parts : '$city, ${p.country ?? ''}';
-          _locating = false;
-        });
-      } else {
-        // Fallback to coordinates if geocoding fails
-        setState(() {
-          _currentCity =
-              '${pos.latitude.toStringAsFixed(3)}, ${pos.longitude.toStringAsFixed(3)}';
-          _fullAddress = 'Lat: ${pos.latitude}, Lng: ${pos.longitude}';
-          _locating = false;
-        });
+      // Fallback to coordinates if no address found
+      if (fullAddress.isEmpty) {
+        city =
+            '${pos.latitude.toStringAsFixed(3)}, ${pos.longitude.toStringAsFixed(3)}';
+        fullAddress = 'Lat: ${pos.latitude}, Lng: ${pos.longitude}';
       }
+
+      setState(() {
+        _currentCity = city;
+        _fullAddress = fullAddress;
+        _locating = false;
+      });
     } catch (e) {
       debugPrint('[Home] Location error: $e');
       if (mounted) {

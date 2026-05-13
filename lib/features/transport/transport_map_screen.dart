@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' show min, max;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:pet_app/core/services/maps_web_service.dart';
+import 'package:pet_app/core/theme/app_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
@@ -180,11 +183,40 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       if (mounted) setState(() => _suggestions = []);
       return;
     }
+
+    // On web, HTTP requests to Maps API are blocked by CORS
+    // Show manual entry fallback for web
+    if (kIsWeb) {
+      // Web: Use JS API for autocomplete (avoids CORS)
+      debugPrint('[Transport] Web: Using JS API for autocomplete');
+      try {
+        final suggestions = await MapsWebService.getSuggestions(input);
+        if (mounted) {
+          setState(() {
+            _suggestions = suggestions;
+          });
+        }
+        debugPrint('[Transport] Got ${suggestions.length} web suggestions');
+      } catch (e) {
+        debugPrint('[Transport] Web autocomplete error: $e');
+        // Fallback to manual entry
+        setState(() {
+          _suggestions = [
+            {'description': '$input (Press Enter)', 'placeId': 'manual_$input'},
+          ];
+        });
+      }
+      return;
+    }
+
     try {
       final uri = Uri.https(
         'maps.googleapis.com',
         '/maps/api/place/autocomplete/json',
         {'input': input, 'key': _kMapsApiKey, 'types': 'geocode'},
+      );
+      debugPrint(
+        '[Transport] Calling Places API: ${uri.toString().replaceAll(_kMapsApiKey, '***')}',
       );
       final res = await http.get(uri);
       debugPrint('[Transport] Autocomplete HTTP ${res.statusCode}');
@@ -222,10 +254,57 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
       });
     } catch (e) {
       debugPrint('[Transport] Autocomplete exception: $e');
+      if (kIsWeb && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Places API blocked on web. Using manual entry.'),
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
-  Future<LatLng?> _placeIdToLatLng(String placeId) async {
+  Future<LatLng?> _placeIdToLatLng(String placeId, {String? address}) async {
+    // Handle manual web entries (typed address, not from suggestions)
+    if (placeId.startsWith('manual_')) {
+      final addr = address ?? placeId.replaceFirst('manual_', '');
+      if (kIsWeb) {
+        // Manual entry on web - can't geocode via HTTP due to CORS
+        debugPrint('[Transport] Web manual entry: $addr');
+        return const LatLng(-26.1076, 28.0567); // Default to Sandton
+      }
+      // Try geocoding the address
+      try {
+        final locs = await locationFromAddress(addr);
+        if (locs.isNotEmpty) {
+          return LatLng(locs.first.latitude, locs.first.longitude);
+        }
+      } catch (_) {
+        return null;
+      }
+      return null;
+    }
+
+    // Real place ID from Google Places
+    if (kIsWeb) {
+      // Web: Use JS API for place details (avoids CORS)
+      try {
+        final result = await MapsWebService.getPlaceDetails(placeId);
+        if (result != null) {
+          debugPrint(
+            '[Transport] Web place details: ${result.latitude}, ${result.longitude}',
+          );
+        }
+        return result;
+      } catch (e) {
+        debugPrint('[Transport] Web place details error: $e');
+        return null;
+      }
+    }
+
+    // Native: Use HTTP API
     try {
       final uri = Uri.https(
         'maps.googleapis.com',
@@ -247,7 +326,10 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
   Future<void> _selectSuggestion(Map<String, String> s) async {
     _debounce?.cancel();
-    final latLng = await _placeIdToLatLng(s['placeId']!);
+    final latLng = await _placeIdToLatLng(
+      s['placeId']!,
+      address: s['description'],
+    );
     if (!mounted) return;
 
     if (_suggestionTarget == _SuggestionTarget.pickup) {
@@ -277,8 +359,28 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         _suggestions = [];
         _destAddress = s['description']!;
         _destCtrl.text = _destAddress;
-        if (latLng != null) _destLatLng = latLng;
+        // Ensure selection is at end so text appears properly
+        _destCtrl.selection = TextSelection.collapsed(
+          offset: _destAddress.length,
+        );
+        if (latLng != null) {
+          _destLatLng = latLng;
+          _markers = {
+            if (_currentLatLng != null)
+              _buildPickupMarker(_currentLatLng!, _pickupAddress),
+            _buildDestMarker(latLng, _destAddress),
+          };
+        }
       });
+      // Move camera to destination when selected
+      if (latLng != null) {
+        final ctrl = await _mapCompleter.future;
+        ctrl.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: latLng, zoom: 15.5),
+          ),
+        );
+      }
     }
   }
 
@@ -312,50 +414,83 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
 
     setState(() => _loadingRoute = true);
 
-    try {
-      final uri =
-          Uri.https('maps.googleapis.com', '/maps/api/directions/json', {
-            'origin': '${origin.latitude},${origin.longitude}',
-            'destination': '${_destLatLng!.latitude},${_destLatLng!.longitude}',
-            'mode': 'driving',
-            'key': _kMapsApiKey,
+    // Web: Use JS Directions API
+    if (kIsWeb && _destLatLng != null) {
+      try {
+        final result = await MapsWebService.getDirections(
+          origin!,
+          _destLatLng!,
+        );
+        if (result != null) {
+          final distanceKm = (result['distanceValue'] as double) / 1000.0;
+          final points = result['points'] as List<LatLng>;
+
+          setState(() {
+            _distanceText = result['distanceText'] as String;
+            _durationText = result['durationText'] as String;
+            _distanceKm = distanceKm;
+            _fareAmount = 10.0 + (distanceKm * 8.0);
+            _markers = {
+              _buildPickupMarker(origin!, _pickupAddress),
+              _buildDestMarker(_destLatLng!, _destAddress),
+            };
+            _polylines = {
+              Polyline(
+                polylineId: const PolylineId('route'),
+                points: points,
+                color: AppColors.primary,
+                width: 5,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+                jointType: JointType.round,
+              ),
+            };
+            _step = _TransportStep.routing;
+            _loadingRoute = false;
           });
 
-      final res = await http.get(uri);
-      if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
-
-      final data = json.decode(res.body) as Map<String, dynamic>;
-      if (data['status'] != 'OK') {
-        throw Exception('No route found (${data['status']})');
+          // Fit both markers in view
+          final bounds = LatLngBounds(
+            southwest: LatLng(
+              min(origin!.latitude, _destLatLng!.latitude),
+              min(origin!.longitude, _destLatLng!.longitude),
+            ),
+            northeast: LatLng(
+              max(origin!.latitude, _destLatLng!.latitude),
+              max(origin!.longitude, _destLatLng!.longitude),
+            ),
+          );
+          final ctrl = await _mapCompleter.future;
+          await ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+          return;
+        }
+      } catch (e) {
+        debugPrint('[Transport] Web directions error: $e');
       }
+      // Fallback to straight line distance
+      final dest = _destLatLng!;
+      final distance = Geolocator.distanceBetween(
+        origin!.latitude,
+        origin!.longitude,
+        dest.latitude,
+        dest.longitude,
+      );
+      final distanceKm = (distance / 1000).ceil();
+      final estimatedTime = (distance / 1000 * 2).ceil();
 
-      final leg = data['routes'][0]['legs'][0];
-      final encodedPoly =
-          data['routes'][0]['overview_polyline']['points'] as String;
-
-      final decoded = PolylinePoints().decodePolyline(encodedPoly);
-      final polyCoords = decoded
-          .map((p) => LatLng(p.latitude, p.longitude))
-          .toList();
-
-      final rawMeters = (leg['distance']['value'] as num).toDouble();
-      final km = rawMeters / 1000.0;
-      final fare = 10.0 + (km * 8.0);
-
-      final capturedOrigin = origin;
       setState(() {
-        _distanceText = leg['distance']['text'] as String;
-        _durationText = leg['duration']['text'] as String;
-        _distanceKm = km;
-        _fareAmount = fare;
+        _distanceText = '$distanceKm km (est.)';
+        _durationText = '$estimatedTime min (est.)';
+        _distanceKm = distanceKm.toDouble();
+        _fareAmount = 10.0 + (distanceKm * 8.0);
         _markers = {
-          _buildPickupMarker(capturedOrigin, _pickupCtrl.text),
-          _buildDestMarker(_destLatLng!, _destAddress),
+          _buildPickupMarker(origin!, _pickupAddress),
+          _buildDestMarker(dest, _destAddress),
         };
         _polylines = {
           Polyline(
             polylineId: const PolylineId('route'),
-            points: polyCoords,
+            points: [origin!, dest],
             color: AppColors.primary,
             width: 5,
             startCap: Cap.roundCap,
@@ -366,30 +501,90 @@ class _TransportMapScreenState extends State<TransportMapScreen> {
         _step = _TransportStep.routing;
         _loadingRoute = false;
       });
+      return;
+    } else {
+      // Native: use Directions API
+      try {
+        final uri = Uri.https(
+          'maps.googleapis.com',
+          '/maps/api/directions/json',
+          {
+            'origin': '${origin.latitude},${origin.longitude}',
+            'destination': '${_destLatLng!.latitude},${_destLatLng!.longitude}',
+            'mode': 'driving',
+            'key': _kMapsApiKey,
+          },
+        );
+        final res = await http.get(uri);
+        if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
 
-      // Fit both markers in view
-      final bounds = LatLngBounds(
-        southwest: LatLng(
-          min(capturedOrigin.latitude, _destLatLng!.latitude),
-          min(capturedOrigin.longitude, _destLatLng!.longitude),
-        ),
-        northeast: LatLng(
-          max(capturedOrigin.latitude, _destLatLng!.latitude),
-          max(capturedOrigin.longitude, _destLatLng!.longitude),
-        ),
-      );
-      final ctrl = await _mapCompleter.future;
-      await ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
-    } catch (e) {
-      if (mounted) {
-        setState(() => _loadingRoute = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not load route: $e'),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
+        final data = json.decode(res.body) as Map<String, dynamic>;
+        if (data['status'] != 'OK') {
+          throw Exception('No route found (${data['status']})');
+        }
+
+        final leg = data['routes'][0]['legs'][0];
+        final encodedPoly =
+            data['routes'][0]['overview_polyline']['points'] as String;
+
+        final decoded = PolylinePoints().decodePolyline(encodedPoly);
+        final polyCoords = decoded
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+
+        final rawMeters = (leg['distance']['value'] as num).toDouble();
+        final km = rawMeters / 1000.0;
+        final fare = 10.0 + (km * 8.0);
+
+        final capturedOrigin = origin;
+        setState(() {
+          _distanceText = leg['distance']['text'] as String;
+          _durationText = leg['duration']['text'] as String;
+          _distanceKm = km;
+          _fareAmount = fare;
+          _markers = {
+            _buildPickupMarker(capturedOrigin, _pickupCtrl.text),
+            _buildDestMarker(_destLatLng!, _destAddress),
+          };
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: polyCoords,
+              color: AppColors.primary,
+              width: 5,
+              startCap: Cap.roundCap,
+              endCap: Cap.roundCap,
+              jointType: JointType.round,
+            ),
+          };
+          _step = _TransportStep.routing;
+          _loadingRoute = false;
+        });
+
+        // Fit both markers in view
+        final bounds = LatLngBounds(
+          southwest: LatLng(
+            min(capturedOrigin.latitude, _destLatLng!.latitude),
+            min(capturedOrigin.longitude, _destLatLng!.longitude),
+          ),
+          northeast: LatLng(
+            max(capturedOrigin.latitude, _destLatLng!.latitude),
+            max(capturedOrigin.longitude, _destLatLng!.longitude),
           ),
         );
+        final ctrl = await _mapCompleter.future;
+        await ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+      } catch (e) {
+        if (mounted) {
+          setState(() => _loadingRoute = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not load route: $e'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     }
   }
