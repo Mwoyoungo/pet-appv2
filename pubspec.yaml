@@ -44,6 +44,11 @@ dependencies:
   # Location
   geolocator: ^13.0.2
 
+  # Maps (Pet Transport feature)
+  google_maps_flutter: ^2.9.0
+  geocoding: ^3.0.0
+  flutter_polyline_points: ^2.1.0
+
   # UI extras
   smooth_page_indicator: ^1.2.0+3
   image_picker: ^1.1.2

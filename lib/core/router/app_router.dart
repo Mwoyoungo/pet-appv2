@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pet_app/features/splash/splash_screen.dart';
 import 'package:pet_app/features/onboarding/onboarding_screen.dart';
@@ -16,6 +19,7 @@ import 'package:pet_app/features/chat/chat_list_screen.dart';
 import 'package:pet_app/features/profile/profile_screen.dart';
 import 'package:pet_app/features/providers/provider_profile_screen.dart';
 import 'package:pet_app/features/admin/admin_screen.dart';
+import 'package:pet_app/features/transport/transport_map_screen.dart';
 
 class AppRoutes {
   static const splash = '/splash';
@@ -46,8 +50,46 @@ class AppRoutes {
   static const admin = '/admin';
 }
 
+/// Listens to Firebase auth state and notifies GoRouter to re-evaluate redirects.
+class _AuthListenable extends ChangeNotifier {
+  _AuthListenable() {
+    _sub = FirebaseAuth.instance.authStateChanges().listen(
+      (_) => notifyListeners(),
+    );
+  }
+  late final StreamSubscription<User?> _sub;
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
+
+final _authListenable = _AuthListenable();
+
+/// Routes that require a signed-in user.
+const _protectedRoutes = {
+  AppRoutes.chatList,
+  AppRoutes.myBookings,
+  AppRoutes.orders,
+  AppRoutes.booking,
+  AppRoutes.profile,
+  AppRoutes.myStore,
+  AppRoutes.admin,
+};
+
 final appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
+  refreshListenable: _authListenable,
+  redirect: (context, state) {
+    final user = FirebaseAuth.instance.currentUser;
+    final loc = state.matchedLocation;
+    final isProtected =
+        _protectedRoutes.contains(loc) || loc.startsWith('/provider/');
+    if (isProtected && user == null) return AppRoutes.login;
+    return null;
+  },
   routes: [
     GoRoute(
       path: AppRoutes.splash,
@@ -107,7 +149,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.transportList,
-      builder: (context, state) => const ProviderListScreen.transport(),
+      builder: (context, state) => const TransportMapScreen(),
     ),
     GoRoute(
       path: AppRoutes.hydrotherapyList,

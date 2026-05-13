@@ -19,8 +19,6 @@ final currentUserProvider = Provider<User?>((ref) {
 
 // ── Auth notifier ────────────────────────────────────────────────────────────
 class AuthNotifier extends Notifier<AsyncValue<User?>> {
-  bool _streamConnected = false;
-
   @override
   AsyncValue<User?> build() {
     final user = FirebaseAuth.instance.currentUser;
@@ -52,17 +50,21 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
   Future<void> _connectStreamUser(User firebaseUser) async {
     debugPrint('_connectStreamUser: Starting for ${firebaseUser.uid}');
 
-    if (_streamConnected) {
-      // Check if already connected with same user
-      final currentStreamUser = streamClient.state.currentUser;
-      if (currentStreamUser?.id == firebaseUser.uid) {
-        debugPrint(
-          '_connectStreamUser: Already connected for user: ${firebaseUser.uid}',
-        );
-        return;
-      }
-      // Different user or stale connection - disconnect first
-      debugPrint('_connectStreamUser: Disconnecting stale connection');
+    // Use actual client state as ground truth — the _streamConnected flag
+    // resets on provider rebuild so it cannot be trusted alone.
+    final currentStreamUser = streamClient.state.currentUser;
+    if (currentStreamUser?.id == firebaseUser.uid) {
+      debugPrint(
+        '_connectStreamUser: Already connected for user: ${firebaseUser.uid}',
+      );
+      return;
+    }
+
+    // Different user connected — disconnect first
+    if (currentStreamUser != null) {
+      debugPrint(
+        '_connectStreamUser: Disconnecting previous user ${currentStreamUser.id}',
+      );
       await _disconnectStreamUser(firebaseUser.uid);
     }
 
@@ -86,7 +88,6 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
         ),
         token,
       );
-      _streamConnected = true;
       debugPrint('_connectStreamUser: SUCCESS - Connected to Stream');
 
       // Save FCM token for push notifications (mobile only)
@@ -101,13 +102,13 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
       }
     } catch (e) {
       debugPrint('_connectStreamUser: FAILED with error: $e');
-      _streamConnected = false;
       rethrow;
     }
   }
 
   Future<void> _disconnectStreamUser(String uid) async {
-    if (!_streamConnected) return;
+    // Use actual client state — _streamConnected flag may be stale after rebuild.
+    if (streamClient.state.currentUser == null) return;
     try {
       if (!kIsWeb) {
         final fcmToken = await FirebaseMessaging.instance.getToken();
@@ -118,7 +119,6 @@ class AuthNotifier extends Notifier<AsyncValue<User?>> {
         }
       }
       await streamClient.disconnectUser();
-      _streamConnected = false;
     } catch (e) {
       debugPrint('Stream disconnect error: $e');
     }

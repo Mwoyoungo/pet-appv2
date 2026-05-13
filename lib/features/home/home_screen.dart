@@ -1,13 +1,20 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pet_app/core/theme/app_colors.dart';
 import 'package:pet_app/core/providers/theme_provider.dart';
+import 'package:pet_app/core/providers/user_profile_provider.dart';
 import 'package:pet_app/core/utils/responsive.dart';
 import 'package:pet_app/core/router/app_router.dart';
 import 'package:pet_app/shared/widgets/bottom_nav_bar.dart';
 import 'package:pet_app/shared/widgets/service_category_card.dart';
+import 'package:pet_app/features/transport/incoming_transport_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -19,24 +26,321 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _navIndex = 0;
   final _searchController = TextEditingController();
+  StreamSubscription<QuerySnapshot>? _jobSub;
+  ProviderSubscription<AsyncValue<UserProfile?>>? _profileSub;
+  final Set<String> _shownJobIds = {};
+  final List<MapEntry<String, Map<String, dynamic>>> _jobBuffer = [];
+  String _currentCity = 'Locating...';
+  String _fullAddress = '';
+  bool _locating = true;
 
   final _services = const [
-    _ServiceItem(Icons.emergency_rounded, 'Emergency\nClinics & Vets', true, 'emergency'),
+    _ServiceItem(
+      Icons.emergency_rounded,
+      'Emergency\nClinics & Vets',
+      true,
+      'emergency',
+    ),
     _ServiceItem(Icons.content_cut_rounded, 'Groomers', false, 'groomers'),
     _ServiceItem(Icons.night_shelter_rounded, 'Pet Sitter', false, 'sitters'),
     _ServiceItem(Icons.directions_run_rounded, 'Pet Walker', false, 'walkers'),
     _ServiceItem(Icons.festival_rounded, 'Daycare', false, 'daycare'),
     _ServiceItem(Icons.sports_score_rounded, 'Trainers', false, 'trainers'),
-    _ServiceItem(Icons.shopping_bag_rounded, 'Pet Store & Adoption', false, 'store'),
-    _ServiceItem(Icons.local_shipping_rounded, 'Pet Transpo', false, 'transport'),
+    _ServiceItem(
+      Icons.shopping_bag_rounded,
+      'Pet Store & Adoption',
+      false,
+      'store',
+    ),
+    _ServiceItem(
+      Icons.local_shipping_rounded,
+      'Pet Transpo',
+      false,
+      'transport',
+    ),
     _ServiceItem(Icons.psychology_rounded, 'Behaviorist', false, 'behaviorist'),
     _ServiceItem(Icons.pool_rounded, 'Hydrotherapy', false, 'hydrotherapy'),
     _ServiceItem(Icons.shield_outlined, 'Pet Insurance', false, 'insurance'),
-    _ServiceItem(Icons.night_shelter_rounded, 'Pet Boarding', false, 'boarding'),
+    _ServiceItem(
+      Icons.night_shelter_rounded,
+      'Pet Boarding',
+      false,
+      'boarding',
+    ),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startJobListener();
+      _fetchLocation();
+    });
+  }
+
+  Future<void> _fetchLocation() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.deniedForever ||
+          perm == LocationPermission.denied) {
+        if (mounted) {
+          setState(() {
+            _currentCity = 'Location off';
+            _locating = false;
+          });
+        }
+        return;
+      }
+
+      // Use high accuracy for precise location
+      final pos =
+          await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+            ),
+          ).timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              throw Exception('Location timeout');
+            },
+          );
+
+      // Try to get placemark with better error handling
+      List<Placemark> placemarks = [];
+      try {
+        placemarks = await placemarkFromCoordinates(
+          pos.latitude,
+          pos.longitude,
+        ).timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('[Home] Geocoding failed: $e');
+      }
+
+      if (!mounted) return;
+
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        // Better city selection priority: locality > subLocality > subAdministrativeArea
+        final city = p.locality?.isNotEmpty == true
+            ? p.locality!
+            : (p.subLocality?.isNotEmpty == true
+                  ? p.subLocality!
+                  : (p.subAdministrativeArea?.isNotEmpty == true
+                        ? p.subAdministrativeArea!
+                        : 'Unknown'));
+
+        // Build full address with better formatting
+        final parts = [
+          p.street?.isNotEmpty == true ? p.street : null,
+          p.subLocality?.isNotEmpty == true && p.subLocality != city
+              ? p.subLocality
+              : null,
+          p.locality?.isNotEmpty == true && p.locality != city
+              ? p.locality
+              : null,
+          p.administrativeArea?.isNotEmpty == true
+              ? p.administrativeArea
+              : null,
+          p.country?.isNotEmpty == true ? p.country : null,
+        ].where((s) => s != null && s.isNotEmpty).join(', ');
+
+        setState(() {
+          _currentCity = city;
+          _fullAddress = parts.isNotEmpty ? parts : '$city, ${p.country ?? ''}';
+          _locating = false;
+        });
+      } else {
+        // Fallback to coordinates if geocoding fails
+        setState(() {
+          _currentCity =
+              '${pos.latitude.toStringAsFixed(3)}, ${pos.longitude.toStringAsFixed(3)}';
+          _fullAddress = 'Lat: ${pos.latitude}, Lng: ${pos.longitude}';
+          _locating = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Home] Location error: $e');
+      if (mounted) {
+        setState(() {
+          _currentCity = 'Sandton';
+          _fullAddress = 'Sandton, Johannesburg, South Africa';
+          _locating = false;
+        });
+      }
+    }
+  }
+
+  void _showLocationSheet(bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppColors.cardDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.borderDark
+                        : AppColors.borderLight,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Your Location',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isDark
+                      ? AppColors.textPrimaryDark
+                      : AppColors.textPrimaryLight,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.location_on_rounded,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _fullAddress.isNotEmpty
+                          ? _fullAddress
+                          : 'Could not determine full address.',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: isDark
+                            ? AppColors.textPrimaryDark
+                            : AppColors.textPrimaryLight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _fetchLocation();
+                  },
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Refresh location'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: const Color(0xFF0F172A),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _startJobListener() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Flush buffered jobs whenever the profile becomes available
+    _profileSub = ref.listenManual<AsyncValue<UserProfile?>>(
+      userProfileProvider,
+      (_, next) {
+        final profile = next.valueOrNull;
+        if (profile != null && _jobBuffer.isNotEmpty) {
+          _flushBuffer(user, profile);
+        }
+      },
+    );
+
+    _jobSub = FirebaseFirestore.instance
+        .collection('bookings')
+        .where('isBroadcast', isEqualTo: true)
+        .snapshots()
+        .listen((snap) {
+          final profile = ref.read(userProfileProvider).valueOrNull;
+          for (final change in snap.docChanges) {
+            if (change.type != DocumentChangeType.added) continue;
+            final docId = change.doc.id;
+            if (_shownJobIds.contains(docId)) continue;
+            final data = change.doc.data()!;
+            if (data['customerId'] == user.uid) continue;
+            if (profile == null) {
+              // Profile still loading — buffer for retry
+              _jobBuffer.add(MapEntry(docId, data));
+              continue;
+            }
+            _dispatchJob(user, profile, docId, data);
+          }
+        }, onError: (e) => debugPrint('[JobListener] Firestore error: $e'));
+  }
+
+  void _flushBuffer(User user, UserProfile profile) {
+    final jobs = List.of(_jobBuffer);
+    _jobBuffer.clear();
+    for (final entry in jobs) {
+      if (_shownJobIds.contains(entry.key)) continue;
+      _dispatchJob(user, profile, entry.key, entry.value);
+    }
+  }
+
+  void _dispatchJob(
+    User user,
+    UserProfile profile,
+    String docId,
+    Map<String, dynamic> data,
+  ) {
+    if (!profile.isApprovedProvider) return;
+    if (!profile.providerServiceTypes.any(
+      (s) => s.toLowerCase() == 'transport',
+    )) {
+      return;
+    }
+    _shownJobIds.add(docId);
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            IncomingTransportScreen(bookingId: docId, bookingData: data),
+      ),
+    );
+  }
+
+  @override
   void dispose() {
+    _jobSub?.cancel();
+    _profileSub?.close();
     _searchController.dispose();
     super.dispose();
   }
@@ -101,38 +405,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           isDark: isDark,
                         ),
                         const Spacer(),
-                        Column(
-                          children: [
-                            Text(
-                              'CURRENT LOCATION',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.5,
-                                color: isDark
-                                    ? AppColors.textSecondaryDark
-                                    : AppColors.textSecondaryLight,
+                        GestureDetector(
+                          onTap: () => _showLocationSheet(isDark),
+                          child: Column(
+                            children: [
+                              Text(
+                                'CURRENT LOCATION',
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.5,
+                                  color: isDark
+                                      ? AppColors.textSecondaryDark
+                                      : AppColors.textSecondaryLight,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Text(
-                                  'Sandton, ZA',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_locating)
+                                    const SizedBox(
+                                      width: 10,
+                                      height: 10,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.5,
+                                        color: AppColors.primary,
+                                      ),
+                                    )
+                                  else
+                                    Text(
+                                      _currentCity,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  const SizedBox(width: 2),
+                                  const Icon(
+                                    Icons.expand_more_rounded,
+                                    color: AppColors.primary,
+                                    size: 18,
                                   ),
-                                ),
-                                const SizedBox(width: 2),
-                                const Icon(
-                                  Icons.expand_more_rounded,
-                                  color: AppColors.primary,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-                          ],
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                         const Spacer(),
                         _CircleIconButton(
